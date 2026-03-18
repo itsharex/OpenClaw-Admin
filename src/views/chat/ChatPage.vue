@@ -433,7 +433,6 @@ function normalizeMediaPath(path: string): string {
   return path
 }
 
-
 function extractImageFromText(text: string): { images: ImageItemView[]; cleanedText: string } {
   const images: ImageItemView[] = []
   let cleanedText = text
