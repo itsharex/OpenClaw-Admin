@@ -76,6 +76,48 @@ const sseClients = new Map()
 const terminalSessions = new Map()
 const desktopSessions = new Map()
 
+function cleanupTerminalSession(sessionId) {
+  const session = terminalSessions.get(sessionId)
+  if (!session) return false
+  
+  try {
+    if (session.ptyProcess) {
+      session.ptyProcess.kill()
+    }
+  } catch (e) {
+    debug('[Terminal] Error killing PTY process:', e.message)
+  }
+  
+  terminalSessions.delete(sessionId)
+  console.log(`[Terminal] Session ${sessionId} cleaned up`)
+  return true
+}
+
+function cleanupAllTerminalSessions() {
+  const sessionIds = [...terminalSessions.keys()]
+  console.log(`[Terminal] Cleaning up ${sessionIds.length} terminal sessions...`)
+  for (const sessionId of sessionIds) {
+    cleanupTerminalSession(sessionId)
+  }
+}
+
+function cleanupOrphanedSessions() {
+  const now = Date.now()
+  const STALE_THRESHOLD = 30 * 60 * 1000
+  
+  for (const [sessionId, session] of terminalSessions) {
+    const isStale = session.lastHeartbeat && (now - session.lastHeartbeat) > STALE_THRESHOLD
+    const hasDeadResponse = !session.res || session.res.writableEnded || session.res.destroyed
+    
+    if (isStale || hasDeadResponse) {
+      console.log(`[Terminal] Cleaning up orphaned session ${sessionId} (stale: ${isStale}, dead response: ${hasDeadResponse})`)
+      cleanupTerminalSession(sessionId)
+    }
+  }
+}
+
+setInterval(cleanupOrphanedSessions, 5 * 60 * 1000)
+
 let gatewayVersion = null
 let updateInfo = null
 
@@ -1091,10 +1133,17 @@ app.get('/api/terminal/stream', authMiddleware, (req, res) => {
   res.flushHeaders()
 
   const sessionId = randomUUID()
+  const now = Date.now()
   
   const sendEvent = (type, data = {}) => {
-    const event = { type, sessionId, ...data }
-    res.write(`data: ${JSON.stringify(event)}\n\n`)
+    try {
+      const event = { type, sessionId, ...data }
+      res.write(`data: ${JSON.stringify(event)}\n\n`)
+      return true
+    } catch (e) {
+      console.error('[Terminal] Error sending event:', e.message)
+      return false
+    }
   }
 
   try {
@@ -1108,20 +1157,31 @@ app.get('/api/terminal/stream', authMiddleware, (req, res) => {
       env: { ...process.env, TERM: 'xterm-256color' }
     })
 
-    terminalSessions.set(sessionId, { ptyProcess, nodeId, res })
+    terminalSessions.set(sessionId, { 
+      ptyProcess, 
+      nodeId, 
+      res, 
+      createdAt: now,
+      lastHeartbeat: now 
+    })
 
     ptyProcess.onData((data) => {
       try {
-        sendEvent('output', { data })
+        const sent = sendEvent('output', { data })
+        if (!sent) {
+          console.log(`[Terminal] Failed to send output for session ${sessionId}, cleaning up`)
+          cleanupTerminalSession(sessionId)
+        }
       } catch (e) {
         console.error('[Terminal] Error sending output:', e.message)
+        cleanupTerminalSession(sessionId)
       }
     })
 
     ptyProcess.onExit(({ exitCode }) => {
       console.log(`[Terminal] Session ${sessionId} exited with code ${exitCode}`)
       sendEvent('disconnected', { message: `Process exited with code ${exitCode}` })
-      terminalSessions.delete(sessionId)
+      cleanupTerminalSession(sessionId)
     })
 
     console.log(`[Terminal] Session ${sessionId} created (shell: ${shell}, size: ${cols}x${rows})`)
@@ -1129,15 +1189,12 @@ app.get('/api/terminal/stream', authMiddleware, (req, res) => {
 
     req.on('close', () => {
       console.log(`[Terminal] Client disconnected, cleaning up session ${sessionId}`)
-      const session = terminalSessions.get(sessionId)
-      if (session) {
-        try {
-          session.ptyProcess.kill()
-        } catch (e) {
-          // Process may already be dead
-        }
-        terminalSessions.delete(sessionId)
-      }
+      cleanupTerminalSession(sessionId)
+    })
+
+    req.on('error', (err) => {
+      console.error(`[Terminal] Request error for session ${sessionId}:`, err.message)
+      cleanupTerminalSession(sessionId)
     })
 
   } catch (err) {
@@ -1196,20 +1253,11 @@ app.post('/api/terminal/destroy', authMiddleware, (req, res) => {
     return res.status(400).json({ ok: false, error: { message: 'sessionId is required' } })
   }
 
-  const session = terminalSessions.get(sessionId)
-  if (!session) {
-    return res.json({ ok: true, message: 'Session already destroyed' })
+  const cleaned = cleanupTerminalSession(sessionId)
+  if (cleaned) {
+    console.log(`[Terminal] Session ${sessionId} destroyed via API`)
   }
-
-  try {
-    session.ptyProcess.kill()
-    terminalSessions.delete(sessionId)
-    console.log(`[Terminal] Session ${sessionId} destroyed`)
-    res.json({ ok: true })
-  } catch (err) {
-    console.error('[Terminal] Error destroying PTY:', err.message)
-    res.status(500).json({ ok: false, error: { message: err.message } })
-  }
+  res.json({ ok: true, message: cleaned ? 'Session destroyed' : 'Session already destroyed' })
 })
 
 app.post('/api/terminal/heartbeat', authMiddleware, (req, res) => {
@@ -3495,6 +3543,17 @@ server.listen(envConfig.PORT, () => {
 
 process.on('SIGINT', () => {
   console.log('\nShutting down...')
+  cleanupAllTerminalSessions()
+  gateway.disconnect()
+  server.close(() => {
+    console.log('Server closed')
+    process.exit(0)
+  })
+})
+
+process.on('SIGTERM', () => {
+  console.log('\nShutting down (SIGTERM)...')
+  cleanupAllTerminalSessions()
   gateway.disconnect()
   server.close(() => {
     console.log('Server closed')
