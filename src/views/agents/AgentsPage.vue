@@ -201,6 +201,12 @@ const tableColumns = computed<DataTableColumns<AgentInfo>>(() => [
       const identity = row.identity;
       const emoji = identity?.emoji;
       const avatar = identity?.avatarUrl || identity?.avatar;
+      
+      // Helper to validate avatar URL
+      const isValidAvatarUrl = (url: string | undefined) => {
+        if (!url) return false
+        return typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') || url.startsWith('avatars/'))
+      }
 
       return h(
         NSpace,
@@ -209,6 +215,13 @@ const tableColumns = computed<DataTableColumns<AgentInfo>>(() => [
           default: () => [
             emoji
               ? h("span", { style: "font-size: 24px;" }, emoji)
+              : isValidAvatarUrl(avatar)
+              ? h("img", {
+                  src: avatar,
+                  style: "width: 32px; height: 32px; border-radius: 50%; object-fit: cover;",
+                  alt: identity?.name || row.name || row.id,
+                  onError: (e: Event) => { (e.target as HTMLImageElement).style.display = 'none' }
+                })
               : h(
                   NAvatar,
                   {
