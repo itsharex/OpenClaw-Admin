@@ -265,6 +265,14 @@ const seedRolesAndPermissions = () => {
     { id: 'perm_desktop_access', name: 'desktop:access', resource: 'desktop', action: 'access', description: 'Access remote desktop' },
     { id: 'perm_files_manage', name: 'files:manage', resource: 'files', action: 'manage', description: 'Manage files' },
     { id: 'perm_system_admin', name: 'system:admin', resource: 'system', action: 'admin', description: 'Full system administration' },
+    { id: 'perm_office_agents_read', name: 'office:agents:read', resource: 'office', action: 'agents:read', description: 'View agents list and details' },
+    { id: 'perm_office_agents_write', name: 'office:agents:write', resource: 'office', action: 'agents:write', description: 'Create/edit/delete agents' },
+    { id: 'perm_office_templates_read', name: 'office:templates:read', resource: 'office', action: 'templates:read', description: 'View agent templates' },
+    { id: 'perm_office_templates_write', name: 'office:templates:write', resource: 'office', action: 'templates:write', description: 'Create/edit/delete templates' },
+    { id: 'perm_myworld_companies_read', name: 'myworld:companies:read', resource: 'myworld', action: 'companies:read', description: 'View companies and details' },
+    { id: 'perm_myworld_companies_write', name: 'myworld:companies:write', resource: 'myworld', action: 'companies:write', description: 'Create/edit/delete companies' },
+    { id: 'perm_myworld_members_read', name: 'myworld:members:read', resource: 'myworld', action: 'members:read', description: 'View company members' },
+    { id: 'perm_myworld_members_write', name: 'myworld:members:write', resource: 'myworld', action: 'members:write', description: 'Manage company members' },
   ]
 
   const defaultRoles = [
@@ -272,14 +280,18 @@ const seedRolesAndPermissions = () => {
       id: 'role_viewer',
       name: 'viewer',
       description: 'Read-only access to the dashboard',
-      permissions: ['perm_dashboard_view', 'perm_config_read', 'perm_agents_manage', 'perm_notifications_manage'],
+      permissions: ['perm_dashboard_view', 'perm_config_read', 'perm_agents_manage', 'perm_notifications_manage',
+        'perm_office_agents_read', 'perm_office_agents_write', 'perm_office_templates_read',
+        'perm_myworld_companies_read', 'perm_myworld_companies_write', 'perm_myworld_members_read', 'perm_myworld_members_write'],
       is_system: 1
     },
     {
       id: 'role_operator',
       name: 'operator',
       description: 'Standard operator with file and terminal access',
-      permissions: ['perm_dashboard_view', 'perm_config_read', 'perm_config_write', 'perm_agents_manage', 'perm_wizard_manage', 'perm_backup_manage', 'perm_terminal_access', 'perm_desktop_access', 'perm_files_manage', 'perm_notifications_manage'],
+      permissions: ['perm_dashboard_view', 'perm_config_read', 'perm_config_write', 'perm_agents_manage', 'perm_wizard_manage', 'perm_backup_manage', 'perm_terminal_access', 'perm_desktop_access', 'perm_files_manage', 'perm_notifications_manage',
+        'perm_office_agents_read', 'perm_office_agents_write', 'perm_office_templates_read', 'perm_office_templates_write',
+        'perm_myworld_companies_read', 'perm_myworld_companies_write', 'perm_myworld_members_read', 'perm_myworld_members_write'],
       is_system: 1
     },
     {

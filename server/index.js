@@ -13,6 +13,8 @@ import checkDiskSpace from 'check-disk-space'
 import { execSync } from 'child_process'
 import pty from 'node-pty'
 import db, { createBackupRecord, updateBackupRecord, getBackupRecord, getBackupRecords, getBackupRecordsCount, deleteBackupRecord } from './database.js'
+import { registerOfficeRoutes, migrateOfficeTables } from './office.js'
+import { registerMyWorldRoutes, migrateMyWorldTables } from './myworld.js'
 import {
   hashPassword, verifyPassword, generateToken, createSession,
   validateSession, invalidateSession, invalidateAllUserSessions,
@@ -2532,7 +2534,7 @@ app.get('/api/media', (req, res) => {
       console.warn("[Media] Path traversal attempt:", { mediaDir, safePath, resolvedPath })
       return res.status(403).json({ ok: false, error: { message: 'Access denied' } })
     }
-    console.log('[Media] Safe path:', safePath
+    console.log('[Media] Safe path:', safePath)
     
     // 支持多个可能的媒体目录，按优先级搜索
     const possibleMediaDirs = []
@@ -3741,6 +3743,12 @@ if (hasDist) {
     })
   })
 }
+
+// Register Office and MyWorld API routes
+migrateOfficeTables()
+registerOfficeRoutes(app)
+migrateMyWorldTables()
+registerMyWorldRoutes(app)
 
 server.listen(envConfig.PORT, () => {
   console.log(`Server running on http://localhost:${envConfig.PORT}`)
