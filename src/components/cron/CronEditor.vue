@@ -149,7 +149,7 @@ interface ScheduleForm {
   cronExpression: string
   everyValue: number | null
   everyUnit: 'minutes' | 'hours' | 'days'
-  specificTime: Date | null
+  specificTime: number | null
   specificDate: number | null
 }
 
@@ -272,7 +272,7 @@ function toggleCronValue(fieldKey: string, value: string): void {
   const fieldIndex = ['minutes', 'hours', 'days', 'months', 'weekdays'].indexOf(fieldKey)
   if (fieldIndex === -1) return
 
-  const current = parts[fieldIndex]
+  const current = parts[fieldIndex] ?? '*'
   if (current === '*') {
     parts[fieldIndex] = value
   } else if (current === value) {
