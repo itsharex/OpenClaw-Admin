@@ -15,8 +15,8 @@
     </div>
     
     <div class="progress-labels">
-      <NText depth="3>{{ minLabel }}</NText>
-      <NText depth="3>{{ maxLabel }}</NText>
+      <NText depth="3">{{ minLabel }}</NText>
+      <NText depth="3">{{ maxLabel }}</NText>
     </div>
   </div>
 </template>
@@ -25,7 +25,7 @@
 import { computed } from 'vue'
 import { NText } from 'naive-ui'
 
-defineProps<{
+const props = defineProps<{
   title: string
   value: number
   min?: number
