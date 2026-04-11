@@ -4,9 +4,11 @@
  */
 
 const crypto = require('crypto');
-const { query } = require('../utils/database');
 const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
+
+// 注意：2FA 服务使用内存数据库存储（生产环境应使用持久化数据库）
+const twoFactorStore = new Map();
 
 class TwoFactorAuthService {
   /**
@@ -16,7 +18,7 @@ class TwoFactorAuthService {
    */
   generateSecret(userId) {
     // 检查是否已存在 2FA 配置
-    const existing = db.prepare('SELECT * FROM two_factor_auth WHERE user_id = ?').get(userId);
+    const existing = twoFactorStore.get(userId);
     
     let secret;
     if (existing && existing.secret) {
@@ -29,11 +31,12 @@ class TwoFactorAuthService {
       }).base32;
 
       // 保存密钥
-      db.prepare(`
-        INSERT INTO two_factor_auth (user_id, secret, enabled, created_at)
-        VALUES (?, ?, 0, ?)
-        ON CONFLICT(user_id) DO UPDATE SET secret = ?, enabled = 0
-      `).run(userId, secret, Date.now(), secret);
+      twoFactorStore.set(userId, {
+        secret,
+        enabled: false,
+        createdAt: Date.now(),
+        backupCodes: []
+      });
     }
 
     // 生成 QR 码 URL
@@ -57,7 +60,7 @@ class TwoFactorAuthService {
    * @returns {boolean} - 验证结果
    */
   verifyToken(userId, token) {
-    const config = db.prepare('SELECT * FROM two_factor_auth WHERE user_id = ?').get(userId);
+    const config = twoFactorStore.get(userId);
     
     if (!config || !config.secret || !config.enabled) {
       return false;
@@ -80,7 +83,7 @@ class TwoFactorAuthService {
    * @returns {boolean} - 是否成功
    */
   enable(userId, token) {
-    const config = db.prepare('SELECT * FROM two_factor_auth WHERE user_id = ?').get(userId);
+    const config = twoFactorStore.get(userId);
     
     if (!config || !config.secret) {
       return false;
@@ -102,11 +105,10 @@ class TwoFactorAuthService {
     const backupCodes = this.generateBackupCodes();
 
     // 启用 2FA
-    db.prepare(`
-      UPDATE two_factor_auth 
-      SET enabled = 1, backup_codes = ?, updated_at = ?
-      WHERE user_id = ?
-    `).run(JSON.stringify(backupCodes), Date.now(), userId);
+    config.enabled = true;
+    config.backupCodes = backupCodes;
+    config.updatedAt = Date.now();
+    twoFactorStore.set(userId, config);
 
     return {
       success: true,
@@ -127,11 +129,14 @@ class TwoFactorAuthService {
     }
 
     // 禁用 2FA
-    db.prepare(`
-      UPDATE two_factor_auth 
-      SET enabled = 0, secret = NULL, backup_codes = '[]', updated_at = ?
-      WHERE user_id = ?
-    `).run(Date.now(), userId);
+    const config = twoFactorStore.get(userId);
+    if (config) {
+      config.enabled = false;
+      config.secret = null;
+      config.backupCodes = [];
+      config.updatedAt = Date.now();
+      twoFactorStore.set(userId, config);
+    }
 
     return true;
   }
@@ -142,8 +147,8 @@ class TwoFactorAuthService {
    * @returns {boolean} - 是否启用
    */
   isEnabled(userId) {
-    const config = db.prepare('SELECT enabled FROM two_factor_auth WHERE user_id = ?').get(userId);
-    return config && config.enabled === 1;
+    const config = twoFactorStore.get(userId);
+    return config && config.enabled === true;
   }
 
   /**
@@ -153,13 +158,13 @@ class TwoFactorAuthService {
    * @returns {object|null} - 验证结果
    */
   verifyBackupCode(userId, backupCode) {
-    const config = db.prepare('SELECT * FROM two_factor_auth WHERE user_id = ?').get(userId);
+    const config = twoFactorStore.get(userId);
     
     if (!config || !config.enabled) {
       return null;
     }
 
-    const backupCodes = JSON.parse(config.backup_codes || '[]');
+    const backupCodes = config.backupCodes || [];
     const index = backupCodes.indexOf(backupCode);
 
     if (index === -1) {
@@ -168,9 +173,9 @@ class TwoFactorAuthService {
 
     // 使用过的备份码需要标记为已使用（这里简化处理，实际应该删除）
     backupCodes.splice(index, 1);
-    db.prepare(`
-      UPDATE two_factor_auth SET backup_codes = ?, updated_at = ? WHERE user_id = ?
-    `).run(JSON.stringify(backupCodes), Date.now(), userId);
+    config.backupCodes = backupCodes;
+    config.updatedAt = Date.now();
+    twoFactorStore.set(userId, config);
 
     return {
       valid: true,
@@ -197,12 +202,12 @@ class TwoFactorAuthService {
    * @returns {object|null} - 配置信息
    */
   getConfig(userId) {
-    const config = db.prepare('SELECT enabled, backup_codes FROM two_factor_auth WHERE user_id = ?').get(userId);
+    const config = twoFactorStore.get(userId);
     if (!config) return null;
     
     return {
-      enabled: config.enabled === 1,
-      backupCodesCount: JSON.parse(config.backup_codes || '[]').length
+      enabled: config.enabled === true,
+      backupCodesCount: (config.backupCodes || []).length
     };
   }
 }
